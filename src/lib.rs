@@ -69,10 +69,26 @@ impl ModelToImage {
     pub fn render(&mut self) -> anyhow::Result<&mut Self> {
         self.gen_bkg();
         let verts: Vec<(i32, i32)> = vec![(2, 3), (12, 37), (62, 53)];
-        let indices = [0, 1, 2, 1, 2, 0, 0, 2];
+        // let indices = [0, 1, 2, 1, 2, 0, 0, 2];
 
         self.create_vertices(&verts);
-        self.line(&verts, &indices)?;
+        use rand::Rng;
+        let mut rng = rand::rng();
+        let num_lines = 2i32.pow(24) as usize;
+        for _ in 0..num_lines {
+            let ax = rng.random_range(0..self.size.width as i32);
+            let ay = rng.random_range(0..self.size.height as i32);
+            let bx = rng.random_range(0..self.size.width as i32);
+            let by = rng.random_range(0..self.size.height as i32);
+
+            let r = rng.random_range(0..=255);
+            let g = rng.random_range(0..=255);
+            let b = rng.random_range(0..=255);
+
+            let color = Rgb([r, g, b]);
+            self.draw_line(ax, ay, bx, by, color);
+        }
+
         Ok(self)
     }
 
@@ -102,36 +118,8 @@ impl ModelToImage {
         }
     }
 
-    fn line(&mut self, vertices: &Vec<(i32, i32)>, indices: &[u8]) -> anyhow::Result<()> {
-        if indices.len() < 2 {
-            return Err(anyhow::anyhow!("Not enough indices to draw lines"));
-        }
-        let color = Rgb(DefinedColours::Red.colour().to_array());
-
-        for pair in indices.windows(2) {
-            let i0 = pair[0] as usize;
-            let i1 = pair[1] as usize;
-            if i0 < vertices.len() && i1 < vertices.len() {
-                let (ax, ay) = vertices[i0];
-                let (bx, by) = vertices[i1];
-                self.draw_line(ax, ay, bx, by, color);
-            } else {
-                eprintln!(
-                    "Warning: index out of bounds in line drawing: {} or {}",
-                    i0, i1
-                );
-            }
-        }
-        Ok(())
-    }
-
     /// Draws a line between the vertices
-    fn draw_line(&mut self, ax: i32, ay: i32, bx: i32, by: i32, color: Rgb<u8>) {
-        let mut ax = ax;
-        let mut ay = ay;
-        let mut bx = bx;
-        let mut by = by;
-
+    fn draw_line(&mut self, mut ax: i32, mut ay: i32, mut bx: i32, mut by: i32, color: Rgb<u8>) {
         let steep = (ax - bx).abs() < (ay - by).abs();
         if steep {
             std::mem::swap(&mut ax, &mut ay);
@@ -141,21 +129,21 @@ impl ModelToImage {
             std::mem::swap(&mut ax, &mut bx);
             std::mem::swap(&mut ay, &mut by);
         }
+
+        let mut y = ay;
+        let mut ierror = 0;
         for x in ax..=bx {
-            let t = if bx == ax {
-                0.0
-            } else {
-                (x - ax) as f32 / (bx - ax) as f32
-            };
-            let y = (ay as f32 + (by - ay) as f32 * t).round() as i32;
             if steep {
-                if y >= 0 && y < self.size.width as i32 && x >= 0 && x < self.size.height as i32 {
-                    self.img_buf.put_pixel(y as u32, x as u32, color);
-                }
+                self.img_buf.put_pixel(y as u32, x as u32, color);
             } else {
-                if x >= 0 && x < self.size.width as i32 && y >= 0 && y < self.size.height as i32 {
-                    self.img_buf.put_pixel(x as u32, y as u32, color);
-                }
+                self.img_buf.put_pixel(x as u32, y as u32, color);
+            }
+            ierror += 2 * (by - ay).abs();
+            let step = if by > ay { 1 } else { -1 };
+            let dx = bx - ax;
+            if ierror > dx {
+                y += step;
+                ierror -= 2 * (dx);
             }
         }
     }
