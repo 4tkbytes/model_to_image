@@ -97,6 +97,8 @@ impl ModelToImage {
     pub fn render(&mut self) -> anyhow::Result<&mut Self> {
         self.gen_bkg();
 
+        let mut z_buffer = vec![f32::NEG_INFINITY; (self.size.width * self.size.height) as usize];
+
         let mut min_x = f32::INFINITY;
         let mut max_x = f32::NEG_INFINITY;
         let mut min_y = f32::INFINITY;
@@ -168,12 +170,13 @@ impl ModelToImage {
                     let color_value = (intensity * 255.0) as u8;
                     let color = Rgb([color_value, color_value, color_value]);
 
-                    self.triangle(
-                        projected[i0].0, projected[i0].1,
-                        projected[i1].0, projected[i1].1,
-                        projected[i2].0, projected[i2].1,
-                        color,
-                    );
+                    let pts = [
+                        (projected[i0].0 as f32, projected[i0].1 as f32, world_coords[i0].z),
+                        (projected[i1].0 as f32, projected[i1].1 as f32, world_coords[i1].z),
+                        (projected[i2].0 as f32, projected[i2].1 as f32, world_coords[i2].z),
+                    ];
+                    
+                    self.triangle_with_zbuffer(&pts, &mut z_buffer, color);
                 }
             }
         }
@@ -184,6 +187,7 @@ impl ModelToImage {
     }
 
     /// Draws a triangle using barycentric coordinates and fills it with a colour
+    #[allow(dead_code)]
     fn triangle(&mut self, x0: i32, y0: i32, x1: i32, y1: i32, x2: i32, y2: i32, color: Rgb<u8>) {
         let min_x = (x0.min(x1).min(x2)).max(0);
         let max_x = (x0.max(x1).max(x2)).min(self.size.width as i32 - 1);
@@ -204,6 +208,69 @@ impl ModelToImage {
 
                 if w0 >= 0.0 && w1 >= 0.0 && w2 >= 0.0 {
                     self.img_buf.put_pixel(x as u32, y as u32, color);
+                }
+            }
+        }
+    }
+
+    fn barycentric(a: (f32, f32), b: (f32, f32), c: (f32, f32), p: (f32, f32)) -> Option<(f32, f32, f32)> {
+        let s0 = (c.0 - a.0, b.0 - a.0, a.0 - p.0);
+        let s1 = (c.1 - a.1, b.1 - a.1, a.1 - p.1);
+        
+        let u = (
+            s0.1 * s1.2 - s0.2 * s1.1,
+            s0.2 * s1.0 - s0.0 * s1.2,
+            s0.0 * s1.1 - s0.1 * s1.0
+        );
+        
+        if u.2.abs() > 1e-2 {
+            let w0 = 1.0 - (u.0 + u.1) / u.2;
+            let w1 = u.1 / u.2;
+            let w2 = u.0 / u.2;
+            Some((w0, w1, w2))
+        } else {
+            None
+        }
+    }
+
+    fn triangle_with_zbuffer(&mut self, pts: &[(f32, f32, f32); 3], z_buffer: &mut [f32], color: Rgb<u8>) {
+        let mut bbox_min = (f32::MAX, f32::MAX);
+        let mut bbox_max = (f32::NEG_INFINITY, f32::NEG_INFINITY);
+        
+        for &(x, y, _) in pts {
+            bbox_min.0 = bbox_min.0.min(x);
+            bbox_min.1 = bbox_min.1.min(y);
+            bbox_max.0 = bbox_max.0.max(x);
+            bbox_max.1 = bbox_max.1.max(y);
+        }
+        
+        let min_x = (bbox_min.0.max(0.0) as i32).max(0);
+        let max_x = (bbox_max.0.min(self.size.width as f32 - 1.0) as i32).min(self.size.width as i32 - 1);
+        let min_y = (bbox_min.1.max(0.0) as i32).max(0);
+        let max_y = (bbox_max.1.min(self.size.height as f32 - 1.0) as i32).min(self.size.height as i32 - 1);
+        
+        for y in min_y..=max_y {
+            for x in min_x..=max_x {
+                let p = (x as f32, y as f32);
+                
+                if let Some((w0, w1, w2)) = Self::barycentric(
+                    (pts[0].0, pts[0].1),
+                    (pts[1].0, pts[1].1),
+                    (pts[2].0, pts[2].1),
+                    p
+                ) {
+                    if w0 >= 0.0 && w1 >= 0.0 && w2 >= 0.0 {
+                        // Interpolate z-coordinate using barycentric coordinates
+                        let z = pts[0].2 * w0 + pts[1].2 * w1 + pts[2].2 * w2;
+                        
+                        let buffer_index = (x + y * self.size.width as i32) as usize;
+                        
+                        // Depth test
+                        if z > z_buffer[buffer_index] {
+                            z_buffer[buffer_index] = z;
+                            self.img_buf.put_pixel(x as u32, y as u32, color);
+                        }
+                    }
                 }
             }
         }
