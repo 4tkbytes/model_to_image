@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 russimp = { version = "3.2", features = ["prebuilt"] }
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 nalgebra = "0.34"
 anyhow = "1.0"
 rand = "0.9"

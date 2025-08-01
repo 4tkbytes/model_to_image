@@ -28,3 +28,4 @@ Cargo.lock
 output.png
 src/output.png
 src/*.glb
+!src/fish.glb

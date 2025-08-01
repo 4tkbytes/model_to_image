@@ -7,8 +7,12 @@ fn main() -> anyhow::Result<()> {
     let model_path = if args.len() >= 2 {
         PathBuf::from(args[1].clone())
     } else {
-        println!("No model specified, using default");
-        PathBuf::from("C:/Users/thrib/model_to_image/src/low_poly_horse.glb")
+        #[cfg(debug_assertions)]
+        {
+            println!("No model specified, using default");
+            println!("All args: {:?}", args)
+        }
+        PathBuf::from("C:/Users/thrib/model_to_image/src/fish.glb")
     };
     let mut model = model_to_image::ModelToImageBuilder::new(PathBuf::from(
         model_path,
