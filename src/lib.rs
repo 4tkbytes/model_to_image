@@ -178,6 +178,8 @@ impl ModelToImage {
             }
         }
 
+        // at the end, ensure the image is flipped. 
+        image::imageops::flip_vertical_in_place(&mut self.img_buf);
         Ok(self)
     }
 
