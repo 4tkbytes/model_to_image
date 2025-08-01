@@ -3,6 +3,7 @@ pub(crate) mod utils;
 use std::path::PathBuf;
 
 use image::{Rgb, RgbImage};
+use russimp::scene::{PostProcess, Scene};
 use utils::DefinedColours;
 
 #[derive(Clone)]
@@ -34,7 +35,16 @@ impl ModelToImageBuilder {
                 self.model_path.to_str().unwrap()
             )));
         }
-        ModelToImage::new(self)
+        let scene = Scene::from_file(
+            self.model_path.to_str().unwrap(),
+            vec![
+                PostProcess::CalculateTangentSpace,
+                PostProcess::Triangulate,
+                PostProcess::JoinIdenticalVertices,
+                PostProcess::SortByPrimitiveType,
+            ],
+        )?;
+        ModelToImage::new(self, scene)
     }
 }
 
@@ -43,6 +53,7 @@ pub struct ModelToImage {
     config: ModelToImageBuilder,
     size: Size,
     img_buf: RgbImage,
+    scene: Scene,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -52,7 +63,7 @@ pub struct Size {
 }
 
 impl ModelToImage {
-    pub(crate) fn new(builder: ModelToImageBuilder) -> anyhow::Result<Self> {
+    pub(crate) fn new(builder: ModelToImageBuilder, scene: Scene) -> anyhow::Result<Self> {
         let size = builder.size;
         let size = Size {
             width: size.0,
@@ -62,36 +73,106 @@ impl ModelToImage {
             config: builder,
             size,
             img_buf: RgbImage::new(size.width, size.height),
+            scene,
         })
     }
 
     /// Starts the rendering, and provides a populated image buffer in the [`ModelToImage`] struct
     pub fn render(&mut self) -> anyhow::Result<&mut Self> {
         self.gen_bkg();
-        let verts: Vec<(i32, i32)> = vec![(2, 3), (12, 37), (62, 53)];
-        // let indices = [0, 1, 2, 1, 2, 0, 0, 2];
 
-        self.create_vertices(&verts);
-        use rand::Rng;
-        let mut rng = rand::rng();
-        let num_lines = 2i32.pow(24) as usize;
-        for _ in 0..num_lines {
-            let ax = rng.random_range(0..self.size.width as i32);
-            let ay = rng.random_range(0..self.size.height as i32);
-            let bx = rng.random_range(0..self.size.width as i32);
-            let by = rng.random_range(0..self.size.height as i32);
+        let mut min_x = f32::INFINITY;
+        let mut max_x = f32::NEG_INFINITY;
+        let mut min_y = f32::INFINITY;
+        let mut max_y = f32::NEG_INFINITY;
 
-            let r = rng.random_range(0..=255);
-            let g = rng.random_range(0..=255);
-            let b = rng.random_range(0..=255);
+        for mesh in &self.scene.meshes {
+            for vertex in &mesh.vertices {
+                min_x = min_x.min(vertex.x);
+                max_x = max_x.max(vertex.x);
+                min_y = min_y.min(vertex.y);
+                max_y = max_y.max(vertex.y);
+            }
+        }
 
-            let color = Rgb([r, g, b]);
-            self.draw_line(ax, ay, bx, by, color);
+        let model_width = max_x - min_x;
+        let model_height = max_y - min_y;
+        let margin = 0.1; // 10 percent margin
+        let scale_x = (self.size.width as f32 * (1.0 - 2.0 * margin)) / model_width;
+        let scale_y = (self.size.height as f32 * (1.0 - 2.0 * margin)) / model_height;
+        let scale = scale_x.min(scale_y);
+
+        let center_x = (min_x + max_x) / 2.0;
+        let center_y = (min_y + max_y) / 2.0;
+        let viewport_center_x = self.size.width as f32 / 2.0;
+        let viewport_center_y = self.size.height as f32 / 2.0;
+
+        let mesh_draw_data: Vec<(Vec<(i32, i32)>, Vec<Vec<usize>>)> = self
+            .scene
+            .meshes
+            .iter()
+            .map(|mesh| {
+                let projected: Vec<(i32, i32)> = mesh
+                    .vertices
+                    .iter()
+                    .map(|v| {
+                        let x = ((v.x - center_x) * scale + viewport_center_x) as i32;
+                        let y = ((v.y - center_y) * scale + viewport_center_y) as i32;
+                        (x, y)
+                    })
+                    .collect();
+                let faces: Vec<Vec<usize>> = mesh
+                    .faces
+                    .iter()
+                    .filter(|face| face.0.len() == 3)
+                    .map(|face| face.0.iter().map(|&idx| idx as usize).collect())
+                    .collect();
+                (projected, faces)
+            })
+            .collect();
+
+        for (projected, faces) in mesh_draw_data {
+            for indices in faces {
+                let (i0, i1, i2) = (indices[0], indices[1], indices[2]);
+                let color = Rgb([255, 255, 255]);
+                self.draw_line_safe(
+                    projected[i0].0,
+                    projected[i0].1,
+                    projected[i1].0,
+                    projected[i1].1,
+                    color,
+                );
+                self.draw_line_safe(
+                    projected[i1].0,
+                    projected[i1].1,
+                    projected[i2].0,
+                    projected[i2].1,
+                    color,
+                );
+                self.draw_line_safe(
+                    projected[i2].0,
+                    projected[i2].1,
+                    projected[i0].0,
+                    projected[i0].1,
+                    color,
+                );
+            }
         }
 
         Ok(self)
     }
 
+    /// Draws an image by clipping to the image size bounds
+    fn draw_line_safe(&mut self, ax: i32, ay: i32, bx: i32, by: i32, color: Rgb<u8>) {
+        let width = self.size.width as i32;
+        let height = self.size.height as i32;
+
+        if (ax >= 0 && ax < width && ay >= 0 && ay < height)
+            || (bx >= 0 && bx < width && by >= 0 && by < height)
+        {
+            self.draw_line(ax, ay, bx, by, color);
+        }
+    }
     /// Generates a solid white-grayish background as a backdrop
     fn gen_bkg(&mut self) {
         for (_, _, pixel) in self.img_buf.enumerate_pixels_mut() {
@@ -101,6 +182,7 @@ impl ModelToImage {
         }
     }
 
+    #[allow(dead_code)]
     fn create_vertices(&mut self, vertices: &Vec<(i32, i32)>) {
         for (x, y) in vertices {
             if x < &(self.size.width as i32) && y < &(self.size.height as i32) {

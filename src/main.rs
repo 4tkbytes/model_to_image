@@ -7,8 +7,7 @@ fn main() -> anyhow::Result<()> {
         "C:/Users/thrib/model_to_image/src/low_poly_horse.glb",
     ))
     .with_size((800, 800))
-    .build()
-    .unwrap();
+    .build()?;
 
     model.render()?;
     model.write_to(None)?;

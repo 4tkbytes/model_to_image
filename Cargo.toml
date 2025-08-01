@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-# russimp = { version = "3.2", features = ["prebuilt"] }
+russimp = { version = "3.2", features = ["prebuilt"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 nalgebra = "0.33"
 anyhow = "1.0"
