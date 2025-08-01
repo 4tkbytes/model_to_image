@@ -1,8 +1,16 @@
 /// RGB format for colours
+#[derive(Clone, Copy, Debug)]
 pub struct Colour {
     r: u8,
     g: u8,
     b: u8,
+}
+
+impl Default for Colour {
+    fn default() -> Self {
+        // The default is the black colour
+        DefinedColours::Black.colour()
+    }
 }
 
 impl Colour {
@@ -28,6 +36,7 @@ impl Colour {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub enum DefinedColours {
     #[allow(dead_code)]
     Red,

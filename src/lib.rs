@@ -3,13 +3,15 @@ pub(crate) mod utils;
 use std::path::PathBuf;
 
 use image::{Rgb, RgbImage};
+use nalgebra::Vector3;
 use russimp::scene::{PostProcess, Scene};
 use utils::DefinedColours;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ModelToImageBuilder {
     pub model_path: PathBuf,
     pub size: (u32, u32),
+    pub light_dir: [f32; 3],
 }
 
 impl ModelToImageBuilder {
@@ -17,14 +19,23 @@ impl ModelToImageBuilder {
         Self {
             model_path,
             size: (256, 256),
+            light_dir: Vector3::new(0.0, 0.0 ,-1.0).into()
         }
     }
 
     /// Provides a size in the case you wish to provide a custom one.
     ///
-    /// Default: (256, 256) if function not used
+    /// Default: (256, 256)
     pub fn with_size(mut self, size: (u32, u32)) -> Self {
         self.size = (size.0.max(10), size.1.max(10));
+        self
+    }
+
+    /// Provides a light direction to be shining onto the model. 
+    /// 
+    /// Default: (0.0, 0.0, -1.0)
+    pub fn with_light_direction<T: Into<[f32; 3]>>(mut self, light_dir: T) -> Self {
+        self.light_dir = light_dir.into();
         self
     }
 
@@ -48,12 +59,15 @@ impl ModelToImageBuilder {
     }
 }
 
+
+#[derive(Debug)]
 pub struct ModelToImage {
     #[allow(dead_code)]
     config: ModelToImageBuilder,
     size: Size,
     img_buf: RgbImage,
     scene: Scene,
+    light_dir: [f32; 3],
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -69,11 +83,13 @@ impl ModelToImage {
             width: size.0,
             height: size.1,
         };
+        let light_dir = builder.light_dir;
         Ok(Self {
             config: builder,
             size,
             img_buf: RgbImage::new(size.width, size.height),
             scene,
+            light_dir,
         })
     }
 
@@ -107,7 +123,7 @@ impl ModelToImage {
         let viewport_center_x = self.size.width as f32 / 2.0;
         let viewport_center_y = self.size.height as f32 / 2.0;
 
-        let mesh_draw_data: Vec<(Vec<(i32, i32)>, Vec<Vec<usize>>)> = self
+        let mesh_draw_data: Vec<(Vec<(i32, i32)>, Vec<Vec<usize>>, Vec<nalgebra::Vector3<f32>>)> = self
             .scene
             .meshes
             .iter()
@@ -127,20 +143,38 @@ impl ModelToImage {
                     .filter(|face| face.0.len() == 3)
                     .map(|face| face.0.iter().map(|&idx| idx as usize).collect())
                     .collect();
-                (projected, faces)
+                let world_coords: Vec<nalgebra::Vector3<f32>> = mesh
+                    .vertices
+                    .iter()
+                    .map(|v| nalgebra::Vector3::new(v.x, v.y, v.z))
+                    .collect();
+                (projected, faces, world_coords)
             })
             .collect();
-        for (projected, faces) in mesh_draw_data {
+
+        let light = Vector3::from(self.light_dir).normalize();
+
+        for (projected, faces, world_coords) in mesh_draw_data {
             for indices in faces {
                 let (i0, i1, i2) = (indices[0], indices[1], indices[2]);
-                let color = Rgb([rand::random_range(0..=255), rand::random_range(0..=255), rand::random_range(0..=255)]);
-                
-                self.triangle(
-                    projected[i0].0, projected[i0].1,
-                    projected[i1].0, projected[i1].1,
-                    projected[i2].0, projected[i2].1,
-                    color,
-                );
+
+                let edge1 = world_coords[i2] - world_coords[i0];
+                let edge2 = world_coords[i1] - world_coords[i0];
+                let normal = edge1.cross(&edge2).normalize();
+
+                let intensity = normal.dot(&light);
+
+                if intensity > 0.0 {
+                    let color_value = (intensity * 255.0) as u8;
+                    let color = Rgb([color_value, color_value, color_value]);
+
+                    self.triangle(
+                        projected[i0].0, projected[i0].1,
+                        projected[i1].0, projected[i1].1,
+                        projected[i2].0, projected[i2].1,
+                        color,
+                    );
+                }
             }
         }
 
@@ -166,7 +200,6 @@ impl ModelToImage {
                 let w1 = ((x2 - x) * (y0 - y) - (x0 - x) * (y2 - y)) as f32 / area;
                 let w2 = ((x0 - x) * (y1 - y) - (x1 - x) * (y0 - y)) as f32 / area;
 
-                // Check if point is inside triangle
                 if w0 >= 0.0 && w1 >= 0.0 && w2 >= 0.0 {
                     self.img_buf.put_pixel(x as u32, y as u32, color);
                 }
