@@ -35,6 +35,7 @@ pub enum DefinedColours {
     Blue,
     #[allow(dead_code)]
     Green,
+    #[allow(dead_code)]
     White,
     Black,
 }
