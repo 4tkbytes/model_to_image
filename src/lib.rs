@@ -34,7 +34,7 @@
 //!     
 //!     image.render();
 //!     let image_buffer = image.output();
-//!     image.write_to(Some(&PathBuf::from("output.png")));
+//!     image.write_to(Some(&PathBuf::from(output.png")));
 //!     // Writes the image to the path
 //! }
 //! ```
