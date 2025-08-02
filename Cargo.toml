@@ -10,6 +10,21 @@ nalgebra = "0.34"
 anyhow = "1.0"
 rand = "0.9"
 
+clap = { version = "4.0", features = ["derive"], optional = true }
+
+[features]
+default = []
+cli = ["clap"]
+
+[lib]
+name = "model_to_image"
+path = "src/lib.rs"
+
+[[bin]]
+name = "model_to_image"
+path = "src/main.rs"
+required-features = ["cli"]
+
 [profile.release]
 opt-level = 3
 lto = true

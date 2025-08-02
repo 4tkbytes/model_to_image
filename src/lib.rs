@@ -1,3 +1,44 @@
+//! # ModelToImage
+//! 
+//! This library aims to convert a 3d model and spit out an image. This library aims to limit
+//! the amount of dependencies used, therefore it uses a software renderer instead of something
+//! like OpenGL or DirectX (which would be overkill). 
+//! 
+//! Here is a sample render:
+//! 
+//! ![fish](output.png)
+//! 
+//! ## Performance
+//! 
+//! With a software renderer, you may have some concerns about performance. Well, do not fret
+//! as under testing of an `Intel i7-1165G7` with an SSD and `32GB` RAM, here are my results:
+//! 
+//! ![Performance chart](doc/image.png)
+//! 
+//! This was tested under the release profile using the command `cargo run --release` and the
+//! `time` command on Git Bash. 
+//! 
+//! ## Example
+//! 
+//! ```rust
+//! use std::path::PathBuf;
+//! 
+//! fn main() {
+//!     let fish = PathBuf::from("C:\\Users\\thrib\\model_to_image\\src\\fish.glb");
+//!     let mut image = model_to_image::ModelToImageBuilder::new(&fish)
+//!         .with_size((800, 600))
+//!         .with_light_direction([0.0, 0.0, -1.0])
+//!         .with_margin(0.1)
+//!         .build()
+//!         .unwrap();
+//!     
+//!     image.render();
+//!     let image_buffer = image.output();
+//!     image.write_to(Some(&PathBuf::from("output.png")));
+//!     // Writes the image to the path
+//! }
+//! ```
+
 pub(crate) mod utils;
 
 use std::path::PathBuf;
@@ -17,18 +58,22 @@ pub struct ModelToImageBuilder {
 }
 
 impl ModelToImageBuilder {
-    pub fn new(model_path: PathBuf) -> Self {
+    /// Creates a new instance of an model_image builder.
+    /// 
+    /// ## Parameters
+    /// - model_path: A PathBuf to the model itself 
+    pub fn new(model_path: &PathBuf) -> Self {
         Self {
-            model_path,
+            model_path: model_path.clone(),
             size: (256, 256),
             light_dir: Vector3::new(0.0, 0.0 ,-1.0).into(),
             margin: 0.1,
         }
     }
 
-    /// Provides a size in the case you wish to provide a custom one.
+    /// Provides an size for the image. 
     ///
-    /// Default: (256, 256)
+    /// Default: (256, 256) if function not used
     pub fn with_size(mut self, size: (u32, u32)) -> Self {
         self.size = (size.0.max(10), size.1.max(10));
         self
@@ -36,7 +81,7 @@ impl ModelToImageBuilder {
 
     /// Provides a light direction to be shining onto the model. 
     /// 
-    /// Default: (0.0, 0.0, -1.0)
+    /// Default: (0.0, 0.0, -1.0) if function not used
     pub fn with_light_direction<T: Into<[f32; 3]>>(mut self, light_dir: T) -> Self {
         self.light_dir = light_dir.into();
         self
