@@ -4,13 +4,16 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-russimp = { version = "3.2", features = ["prebuilt"] }
+russimp = { version = "3.2", features = ["static-link"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 nalgebra = "0.34"
 anyhow = "1.0"
 rand = "0.9"
 
 clap = { version = "4.0", features = ["derive"], optional = true }
+
+[patch.crates-io]
+russimp-sys = { git = "https://github.com/4tkbytes/russimp-sys" }
 
 [features]
 default = []
