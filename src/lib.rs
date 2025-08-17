@@ -2,7 +2,14 @@
 //! 
 //! This library aims to convert a 3d model and spit out an image. This library aims to limit
 //! the amount of dependencies used, therefore it uses a software renderer instead of something
-//! like OpenGL or DirectX (which would be overkill). 
+//! like OpenGL or DirectX (which would be overkill).
+//! 
+//! This is an example, and is not completed. It is at a stage where it is usable, however there
+//! is a very lacklustre amount of features. So far, I need to implement:
+//! * Camera movement
+//! * Shadows
+//! * Ambient occlusion
+//! * Optimisations 
 //! 
 //! Here is a sample render:
 //! 
@@ -45,7 +52,7 @@ use std::path::PathBuf;
 
 use image::{DynamicImage, GenericImageView, Rgb, RgbImage};
 use nalgebra::Vector3;
-use russimp::scene::{PostProcess, Scene};
+use russimp_ng::scene::{PostProcess, Scene};
 
 use crate::utils::Colour;
 
